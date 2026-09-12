@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuro-Nod Elite V11 | Focus Shield</title>
+    <!-- MediaPipe Face Mesh (Edge On-Device Inference) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- CYBERPUNK HUD THEME V11 --- */
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-green: #00ffcc;
+            --neon-red: #ff2a2a;
+            --neon-amber: #ffae00;
+            --glass-bg: rgba(20, 20, 25, 0.90);
+            --panel-border: 1px solid rgba(255, 255, 255, 0.1);
+            --bg-color: #050507;
+        }
+
+        body {
+            background: var(--bg-color);
+            background-image: radial-gradient(circle at 50% 0%, #1a1a2e 0%, #050507 80%);
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .hud-container {
+            display: flex;
+            gap: 20px;
+            max-width: 1240px;
+            width: 100%;
+            flex-wrap: wrap;
+        }
+
+        /* --- VIDEO VIEWPORT --- */
+        .viewport {
+            flex: 1 1 640px;
+            position: relative;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            border: var(--panel-border);
+            box-shadow: 0 0 30px rgba(0, 243, 255, 0.05);
+            aspect-ratio: 4/3;
+            max-height: 520px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        /* Scan-line animation */
+        .scan-line {
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--neon-blue), transparent);
+            box-shadow: 0 0 8px var(--neon-blue);
+            animation: scan 3s linear infinite;
+            display: none;
+            pointer-events: none;
+            z-index: 5;
+        }
+        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+
+        /* Overlays */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.7);
+            z-index: 10;
+        }
+
+        #alarm-overlay {
+            background: rgba(255, 42, 42, 0.4);
+            border: 4px solid var(--neon-red);
+            display: none;
+            animation: pulse-alarm 0.5s infinite alternate;
+        }
+        @keyframes pulse-alarm {
+            0% { box-shadow: inset 0 0 20px var(--neon-red); }
+            100% { box-shadow: inset 0 0 80px var(--neon-red); }
+        }
+
+        .alarm-text {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: #fff;
+            text-shadow: 0 0 10px var(--neon-red);
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+            padding: 0 15px;
+        }
+
+        /* --- TELEMETRY PANEL --- */
+        .panel {
+            flex: 1 1 420px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            border: var(--panel-border);
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-sizing: border-box;
+        }
+
+        .header-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 1.3rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .version-tag {
+            font-size: 0.75rem;
+            color: var(--neon-blue);
+            border: 1px solid var(--neon-blue);
+            padding: 2px 7px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255,255,255,0.03);
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #555;
+            transition: all 0.3s;
+        }
+        .dot.active { background: var(--neon-green); box-shadow: 0 0 8px var(--neon-green); }
+        .dot.warn { background: var(--neon-amber); box-shadow: 0 0 8px var(--neon-amber); }
+        .dot.paused { background: #888; }
+        .dot.danger { background: var(--neon-red); box-shadow: 0 0 8px var(--neon-red); }
+
+        .score-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            font-weight: 700;
+            background: rgba(0, 255, 204, 0.1);
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            color: var(--neon-green);
+            padding: 4px 10px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        .score-pill.grade-a { color: var(--neon-green); border-color: rgba(0, 255, 204, 0.4); background: rgba(0, 255, 204, 0.12); }
+        .score-pill.grade-b { color: var(--neon-blue); border-color: rgba(0, 243, 255, 0.4); background: rgba(0, 243, 255, 0.12); }
+        .score-pill.grade-c { color: var(--neon-amber); border-color: rgba(255, 174, 0, 0.4); background: rgba(255, 174, 0, 0.12); }
+        .score-pill.grade-d { color: var(--neon-red); border-color: rgba(255, 42, 42, 0.4); background: rgba(255, 42, 42, 0.12); }
+
+        /* --- METRIC GRID --- */
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .metric-card {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 11px 12px;
+            position: relative;
+            transition: all 0.25s ease;
+        }
+
+        .metric-card.bad {
+            border-color: var(--neon-red);
+            background: rgba(255, 42, 42, 0.12);
+        }
+
+        .metric-card.warning-state {
+            border-color: var(--neon-amber);
+            background: rgba(255, 174, 0, 0.12);
+        }
+
+        .metric-label {
+            font-size: 0.72rem;
+            color: #8a8a93;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .badge {
+            position: absolute;
+            top: 10px; right: 10px;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.1);
+            color: #888;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge.active { background: rgba(0, 243, 255, 0.2); color: var(--neon-blue); }
+        .badge.alert { background: rgba(255, 42, 42, 0.2); color: var(--neon-red); }
+        .badge.warn { background: rgba(255, 174, 0, 0.2); color: var(--neon-amber); }
+        .badge.good { background: rgba(0, 255, 204, 0.2); color: var(--neon-green); }
+
+        /* --- COACHING & WARNING BAR --- */
+        .coaching-bar {
+            background: rgba(255, 174, 0, 0.12);
+            border: 1px solid var(--neon-amber);
+            color: #fff;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            animation: fadeIn 0.3s ease;
+        }
+        .coaching-bar.danger {
+            background: rgba(255, 42, 42, 0.15);
+            border-color: var(--neon-red);
+        }
+        .coaching-content {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            line-height: 1.35;
+        }
+
+        /* Notification / Sub-message */
+        .msg-box {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            text-align: center;
+            padding: 10px;
+            background: rgba(0,0,0,0.4);
+            border-radius: 6px;
+            border: 1px dashed rgba(255,255,255,0.15);
+            color: #777;
+            min-height: 18px;
+            transition: all 0.2s;
+        }
+
+        /* --- CONTROLS BUTTON GROUP --- */
+        .btn-group {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .btn {
+            background: rgba(255,255,255,0.05);
+            border: var(--panel-border);
+            color: #fff;
+            padding: 10px 10px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 5px;
+            text-decoration: none;
+            font-family: 'Inter', sans-serif;
+            text-align: center;
+        }
+        .btn:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.25); }
+
+        .btn-primary {
+            background: var(--neon-blue);
+            color: #000;
+            border: none;
+            font-weight: 800;
+            grid-column: span 3;
+            font-size: 0.9rem;
+            padding: 12px 14px;
+        }
+        .btn-primary:hover {
+            background: #fff;
+            box-shadow: 0 0 15px var(--neon-blue);
+        }
+
+        .btn-ack {
+            background: #fff;
+            color: #000;
+            font-weight: 800;
+            padding: 14px 28px;
+            font-size: 1.05rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(255,255,255,0.4);
+        }
+        .btn-ack:hover { transform: scale(1.04); }
+
+        .btn-toggle { font-size: 0.74rem; }
+        .btn-toggle.active {
+            background: rgba(0, 243, 255, 0.15);
+            border-color: var(--neon-blue);
+            color: var(--neon-blue);
+        }
+
+        .btn-break {
+            background: rgba(0, 255, 204, 0.08);
+            border-color: rgba(0, 255, 204, 0.3);
+            color: var(--neon-green);
+        }
+        .btn-break:hover {
+            background: rgba(0, 255, 204, 0.18);
+            border-color: var(--neon-green);
+        }
+
+        .btn-report {
+            background: rgba(255, 174, 0, 0.08);
+            border-color: rgba(255, 174, 0, 0.3);
+            color: var(--neon-amber);
+            grid-column: span 3;
+            font-size: 0.85rem;
+            padding: 11px 14px;
+        }
+        .btn-report:hover {
+            background: rgba(255, 174, 0, 0.18);
+            border-color: var(--neon-amber);
+        }
+
+        .btn.suppressed {
+            border-color: var(--neon-amber);
+            color: var(--neon-amber);
+            background: rgba(255, 174, 0, 0.1);
+        }
+
+        /* --- REPORT MODAL --- */
+        .modal-backdrop {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(12px);
+            z-index: 100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            animation: fadeIn 0.25s ease;
+        }
+
+        .modal-card {
+            background: #0f1015;
+            border: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 0 50px rgba(0,0,0,0.8), 0 0 30px rgba(0, 243, 255, 0.1);
+            border-radius: 16px;
+            max-width: 720px;
+            width: 100%;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            padding: 18px 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255,255,255,0.02);
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-close {
+            background: transparent;
+            border: none;
+            color: #888;
+            font-size: 1.4rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            line-height: 1;
+        }
+        .btn-close:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+        .modal-body {
+            padding: 22px 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .report-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .report-kpi {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px;
+            padding: 14px;
+            text-align: center;
+        }
+        .report-kpi-label { font-size: 0.72rem; color: #888; text-transform: uppercase; margin-bottom: 6px; }
+        .report-kpi-val { font-family: 'JetBrains Mono', monospace; font-size: 1.4rem; font-weight: 800; color: #fff; }
+
+        .coaching-takeaway {
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.08) 0%, rgba(0, 255, 204, 0.04) 100%);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: 10px;
+            padding: 16px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        .coaching-takeaway-text {
+            font-size: 0.88rem;
+            color: #e2e8f0;
+            line-height: 1.5;
+        }
+
+        .timeline-section-title {
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            color: #888;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .timeline-container {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            max-height: 180px;
+            overflow-y: auto;
+            padding: 8px 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .timeline-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 6px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.02);
+        }
+        .timeline-row.critical { border-left: 3px solid var(--neon-red); color: #ff9999; }
+        .timeline-row.warning { border-left: 3px solid var(--neon-amber); color: #ffe099; }
+        .timeline-row.coaching { border-left: 3px solid var(--neon-blue); color: #99eeff; }
+        .timeline-row.info { border-left: 3px solid var(--neon-green); color: #99ffdd; }
+
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            background: rgba(255,255,255,0.02);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.98); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        @media (max-width: 900px) {
+            .hud-container { flex-direction: column; }
+            .report-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .btn-group { grid-template-columns: repeat(2, 1fr); }
+            .btn-primary, .btn-report { grid-column: span 2; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="hud-container">
+
+    <!-- 1. VIDEO VIEWPORT -->
+    <div class="viewport">
+        <div id="scan-line" class="scan-line"></div>
+        <video id="webcam" autoplay playsinline></video>
+
+        <!-- Loading Placeholder -->
+        <div id="loader" class="overlay">
+            <div style="font-family:'JetBrains Mono', monospace; color:var(--neon-blue); font-size:1.1rem; letter-spacing:1px; margin-bottom:12px;">INITIALIZING V11 FOCUS SHIELD...</div>
+            <div style="color:#777; font-size:0.85rem;">Click 'START SYSTEM' to launch on-device edge AI</div>
+        </div>
+
+        <!-- Danger Alarm Overlay -->
+        <div id="alarm-overlay" class="overlay">
+            <div class="alarm-text" id="alert-reason">DROWSINESS DETECTED</div>
+            <button class="btn-ack" id="ack-btn">ACKNOWLEDGE (5s MUTE)</button>
+        </div>
+    </div>
+
+    <!-- 2. TELEMETRY & COACHING HUD PANEL -->
+    <div class="panel">
+
+        <!-- Header -->
+        <div class="header-title">
+            <h2>Neuro-Nod <span style="font-weight:300; color:#aaa;">Elite</span> <span class="version-tag">V11 FOCUS SHIELD</span></h2>
+            <a href="index.html" style="color:#888; text-decoration:none; font-size:0.8rem;">← Back</a>
+        </div>
+
+        <!-- Status & Safety Score Bar -->
+        <div class="status-row">
+            <div class="status-pill">
+                <div class="dot" id="status-dot"></div>
+                <span id="status-text">STANDBY</span>
+            </div>
+            <div id="score-pill" class="score-pill grade-a">
+                <span>SAFETY:</span>
+                <span id="score-val">100</span>
+                <span id="score-grade">(A+)</span>
+            </div>
+        </div>
+
+        <!-- Non-Alarm Coaching & Nudge Bar -->
+        <div id="coaching-bar" class="coaching-bar">
+            <div class="coaching-content">
+                <span id="coaching-icon">⚠️</span>
+                <span id="coaching-text">Coaching message here</span>
+            </div>
+            <button id="coaching-dismiss" style="background:transparent; border:none; color:#bbb; cursor:pointer; font-size:1.1rem; padding:0 4px;">✕</button>
+        </div>
+
+        <!-- 6-Metric Telemetry Grid -->
+        <div class="metric-grid">
+
+            <!-- 1. Head Pose (Pitch / Roll) -->
+            <div class="metric-card" id="card-head">
+                <span class="badge" id="slump-badge">STABLE</span>
+                <div class="metric-label">Head Pose (Pitch / Roll)</div>
+                <div class="metric-value" id="head-val">0.0° / 0.0°</div>
+            </div>
+
+            <!-- 2. Gaze / Distraction (Yaw) -->
+            <div class="metric-card" id="card-gaze">
+                <span class="badge" id="gaze-badge">ON ROAD</span>
+                <div class="metric-label">Gaze Offset (Yaw)</div>
+                <div class="metric-value" id="gaze-val">0.0°</div>
+            </div>
+
+            <!-- 3. Eye Openness (EAR) -->
+            <div class="metric-card" id="card-eye">
+                <span class="badge" id="sunglass-badge">VISION CLEAR</span>
+                <div class="metric-label">Eye Openness (EAR)</div>
+                <div class="metric-value" id="ear-val">0.00</div>
+            </div>
+
+            <!-- 4. PERCLOS (60s Rolling Window) -->
+            <div class="metric-card" id="card-perclos">
+                <span class="badge" id="perclos-badge">OPTIMAL</span>
+                <div class="metric-label">PERCLOS (60s Window)</div>
+                <div class="metric-value" id="perclos-val">0.0%</div>
+            </div>
+
+            <!-- 5. Mouth & Yawn Counter -->
+            <div class="metric-card" id="card-mouth">
+                <span class="badge" id="mouth-badge">YAWNS: 0</span>
+                <div class="metric-label">Mouth (MAR / Yawns)</div>
+                <div class="metric-value" id="mar-val">0.00</div>
+            </div>
+
+            <!-- 6. Session & Continuous Drive -->
+            <div class="metric-card" id="card-session">
+                <span class="badge" id="drive-badge">RESTED</span>
+                <div class="metric-label">Drive / Continuous</div>
+                <div class="metric-value" id="drive-val">00:00 / 00:00</div>
+            </div>
+
+        </div>
+
+        <!-- Status / Coaching Notification -->
+        <div class="msg-box" id="msg-box">AWAITING SYSTEM START</div>
+
+        <!-- Control Actions -->
+        <div class="btn-group">
+            <button class="btn btn-primary" id="start-btn">START SYSTEM</button>
+            <button class="btn btn-toggle" id="mode-toggle">Mode: Standard</button>
+            <button class="btn btn-break" id="break-btn">☕ Take a Break</button>
+            <button class="btn" id="pause-btn">Pause (20s)</button>
+            <button class="btn btn-report" id="report-btn">📊 View Session Report</button>
+        </div>
+
+    </div>
+</div>
+
+<!-- 3. COACHING & EVENT REPORT MODAL -->
+<div class="modal-backdrop" id="report-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3>📊 Driver Safety & Coaching Report</h3>
+            <button class="btn-close" id="modal-close-btn">✕</button>
+        </div>
+        <div class="modal-body">
+
+            <!-- Summary KPI Grid -->
+            <div class="report-kpi-grid">
+                <div class="report-kpi">
+                    <div class="report-kpi-label">Safety Score</div>
+                    <div class="report-kpi-val" id="report-score" style="color:var(--neon-green)">100 (A+)</div>
+                </div>
+                <div class="report-kpi">
+                    <div class="report-kpi-label">Drive Duration</div>
+                    <div class="report-kpi-val" id="report-duration">00:00</div>
+                </div>
+                <div class="report-kpi">
+                    <div class="report-kpi-label">Total Events</div>
+                    <div class="report-kpi-val" id="report-events-count">0</div>
+                </div>
+                <div class="report-kpi">
+                    <div class="report-kpi-label">Avg / Peak PERCLOS</div>
+                    <div class="report-kpi-val" id="report-perclos">0% / 0%</div>
+                </div>
+                <div class="report-kpi">
+                    <div class="report-kpi-label">Total Yawns</div>
+                    <div class="report-kpi-val" id="report-yawns">0</div>
+                </div>
+                <div class="report-kpi">
+                    <div class="report-kpi-label">Breaks Taken</div>
+                    <div class="report-kpi-val" id="report-breaks">0</div>
+                </div>
+            </div>
+
+            <!-- AI Coaching Takeaway Box -->
+            <div class="coaching-takeaway">
+                <div style="font-size:1.4rem;">💡</div>
+                <div>
+                    <div style="font-weight:700; color:var(--neon-blue); font-size:0.85rem; text-transform:uppercase; margin-bottom:4px;">Automated Coaching Insight</div>
+                    <div class="coaching-takeaway-text" id="report-takeaway">
+                        Drive safely. Maintain steady forward focus and plan regular rest stops every 2 hours on long trips.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Event Timeline -->
+            <div>
+                <div class="timeline-section-title">Session Event Timeline</div>
+                <div class="timeline-container" id="timeline-list">
+                    <div style="color:#666; text-align:center; padding:15px 0;">No safety incidents logged in this session yet.</div>
+                </div>
+            </div>
+
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="export-btn" style="background:var(--neon-blue); color:#000; font-weight:700;">💾 Export Report (JSON)</button>
+            <button class="btn" id="modal-close-footer">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- DOM REFERENCES ---
+    const videoElement = document.getElementById('webcam');
+    const startBtn = document.getElementById('start-btn'), ackBtn = document.getElementById('ack-btn');
+    const pauseBtn = document.getElementById('pause-btn'), modeToggle = document.getElementById('mode-toggle');
+    const breakBtn = document.getElementById('break-btn'), reportBtn = document.getElementById('report-btn');
+    const statusText = document.getElementById('status-text'), statusDot = document.getElementById('status-dot');
+    const scoreVal = document.getElementById('score-val'), scoreGrade = document.getElementById('score-grade'), scorePill = document.getElementById('score-pill');
+    const msgBox = document.getElementById('msg-box'), loader = document.getElementById('loader');
+
+    // Cards & Values
+    const cardHead = document.getElementById('card-head'), headVal = document.getElementById('head-val'), slumpBadge = document.getElementById('slump-badge');
+    const cardGaze = document.getElementById('card-gaze'), gazeVal = document.getElementById('gaze-val'), gazeBadge = document.getElementById('gaze-badge');
+    const cardEye = document.getElementById('card-eye'), earVal = document.getElementById('ear-val'), sunglassBadge = document.getElementById('sunglass-badge');
+    const cardPerclos = document.getElementById('card-perclos'), perclosVal = document.getElementById('perclos-val'), perclosBadge = document.getElementById('perclos-badge');
+    const cardMouth = document.getElementById('card-mouth'), marVal = document.getElementById('mar-val'), mouthBadge = document.getElementById('mouth-badge');
+    const cardSession = document.getElementById('card-session'), driveVal = document.getElementById('drive-val'), driveBadge = document.getElementById('drive-badge');
+
+    // Coaching & Alarms
+    const coachingBar = document.getElementById('coaching-bar'), coachingIcon = document.getElementById('coaching-icon'), coachingText = document.getElementById('coaching-text'), coachingDismiss = document.getElementById('coaching-dismiss');
+    const alarmOverlay = document.getElementById('alarm-overlay'), alertReason = document.getElementById('alert-reason');
+
+    // Report Modal
+    const reportModal = document.getElementById('report-modal'), modalCloseBtn = document.getElementById('modal-close-btn'), modalCloseFooter = document.getElementById('modal-close-footer');
+    const reportScore = document.getElementById('report-score'), reportDuration = document.getElementById('report-duration'), reportEventsCount = document.getElementById('report-events-count');
+    const reportPerclos = document.getElementById('report-perclos'), reportYawns = document.getElementById('report-yawns'), reportBreaks = document.getElementById('report-breaks');
+    const reportTakeaway = document.getElementById('report-takeaway'), timelineList = document.getElementById('timeline-list'), exportBtn = document.getElementById('export-btn');
+
+    // --- TUNABLE CONSTANTS (V11 FOCUS SHIELD) ---
+    const ALPHA = 0.15;                     // EMA smoothing factor
+    const RAD_TO_DEG = 180 / Math.PI;
+    const CALIBRATION_DURATION_MS = 3000;   // Initial neutral state calibration window
+
+    // Distraction Guard Thresholds
+    const YAW_THRESHOLD_DEG = 25;           // Gaze offset threshold
+    const DISTRACTION_WARN_MS = 1800;       // Visual warning threshold (1.8s)
+    const DISTRACTION_ALARM_MS = 3500;      // Audio alarm threshold (3.5s)
+
+    // Fatigue / PERCLOS / Yawn Thresholds (Industry & NHTSA Standards)
+    const PERCLOS_WINDOW_MS = 60000;          // 60-second rolling window
+    const PERCLOS_MILD_THRESHOLD = 8.0;       // 8% eyelid closure rate (Tier 1: Mild/Rising trend)
+    const PERCLOS_ALERT_THRESHOLD = 15.0;     // 15% eyelid closure rate (Tier 2: Elevated fatigue trend - NHTSA standard)
+    const PERCLOS_CRITICAL_THRESHOLD = 25.0;  // 25% eyelid closure rate (Tier 3: Critical severe drowsiness / microsleep risk)
+    const YAWN_MIN_MAR = 0.18;                // True physiological yawn aperture (speech is typically 0.08-0.15)
+    const YAWN_MIN_DURATION_MS = 800;         // Continuous hold duration: 800ms (speech syllables last <300ms)
+    const YAWN_WINDOW_MS = 600000;            // 10-minute window for frequency checking
+    const YAWN_ALERT_THRESHOLD = 3;           // 3 yawns in 10m -> fatigue trend trigger
+
+    // Proactive Break Coaching
+    const CONTINUOUS_DRIVE_LIMIT_MS = 60 * 60 * 1000; // 60 minutes default
+
+    // Driver Safety Score Event Penalties (Starting from 100)
+    const SCORE_PENALTIES = {
+        HEAD_DROP: -8,
+        SIDE_SLUMP: -8,
+        EYES_CLOSED: -6,
+        CRITICAL_PERCLOS: -5,
+        DISTRACTION: -5,
+        FACE_LOST: -4,
+        FATIGUE_TREND: -2,
+        YAWN: -1,
+        HARSH_MOTION: -3,
+        BREAK_TAKEN: +2                     // Reward rest recovery (capped at 100)
+    };
+
+    // --- STATE MANAGEMENT ---
+    let audioCtx = null, mainGain = null, osc = null;
+    let isCalibrated = false, calibrationStartTime = 0;
+
+    // Smoothed physics & baselines
+    let sPitch = 0, sRoll = 0, sYaw = 0, sEAR = 0, sMAR = 0;
+    let basePitch = 0, baseRoll = 0, baseYaw = 0, baseEAR = 0, baseMAR = 0;
+
+    // Watchdog timers
+    let timers = {
+        deepDrop: null,
+        sideSlump: null,
+        stiffEye: null,
+        distraction: null,
+        yawnStart: null
+    };
+
+    // Flags & Controls
+    let faceLostTimer = null;
+    let sunglassTimer = null;
+    let persistentSunglasses = false;       // Auto-detected sunglasses mode
+    let manualSunglassesMode = false;       // User manual toggle
+    let muteUntil = 0, suppressUntil = 0;
+
+    // Session & Coaching Tracker
+    let sessionStartTime = 0;
+    let continuousDriveStartTime = 0;
+    let breaksTakenCount = 0;
+    let isBreakNudgeActive = false;
+    let isCoachingDismissed = false;
+    let currentCoachingReason = "";
+
+    // PERCLOS & Yawn Tracking
+    let perclosSamples = [];                // [{ time, closed }]
+    let peakPERCLOS = 0;
+    let totalYawnsCount = 0;
+    let yawnTimestamps = [];                // [timestamp]
+    let yawnCountedThisCycle = false;       // Latch to guarantee exactly 1 count per yawn
+    let fatigueTrendLogged = false;
+    let criticalPerclosLogged = false;
+
+    // Event History & Driver Safety Score
+    let events = [];                        // Array of logged incidents
+    let safetyScore = 100;
+    let activeDistractionEventLogged = false;
+    let activeDrowsyEventLogged = false;
+    let activeHeadDropEventLogged = false;
+    let activeSideSlumpEventLogged = false;
+    let activeFaceLostEventLogged = false;
+
+    // --- AUDIO SYSTEM (Web Audio API) ---
+    function initAudio() {
+        if (audioCtx) return;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        mainGain = audioCtx.createGain();
+        mainGain.gain.value = 0;
+        mainGain.connect(audioCtx.destination);
+        osc = audioCtx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.value = 850;
+        osc.connect(mainGain);
+        osc.start();
+    }
+
+    function setAlarm(active) {
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        mainGain.gain.cancelScheduledValues(now);
+        mainGain.gain.linearRampToValueAtTime(active ? 0.25 : 0, now + 0.1);
+    }
+
+    function handleAudio(active, type, now) {
+        if (!audioCtx) return;
+        if (active) {
+            const targetFreq = (type === 'pulse') ? 440 : 850;
+            if (osc.frequency.value !== targetFreq) {
+                osc.frequency.setValueAtTime(targetFreq, audioCtx.currentTime);
+            }
+            if (type === 'pulse') {
+                const cycle = now % 800;
+                setAlarm(cycle < 200);
+            } else {
+                setAlarm(true);
+            }
+        } else {
+            setAlarm(false);
+        }
+    }
+
+    // --- HELPER MATH ---
+    function dist3D(p1, p2) {
+        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2) + Math.pow(p1.z - p2.z, 2));
+    }
+
+    function formatTime(ms) {
+        const totalSec = Math.max(0, Math.floor(ms / 1000));
+        const mins = Math.floor(totalSec / 60);
+        const secs = totalSec % 60;
+        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    // --- EVENT LOGGING & SCORING ---
+    function logEvent(type, severity, description, customPenalty) {
+        const now = performance.now();
+        const elapsedStr = sessionStartTime > 0 ? formatTime(now - sessionStartTime) : "00:00";
+        const penalty = customPenalty !== undefined ? customPenalty : (SCORE_PENALTIES[type] || 0);
+
+        const event = {
+            id: events.length + 1,
+            time: elapsedStr,
+            timestamp: Date.now(),
+            type,
+            severity,
+            penalty,
+            description
+        };
+
+        events.push(event);
+
+        // Update Safety Score
+        safetyScore = Math.max(0, Math.min(100, safetyScore + penalty));
+        updateScoreUI();
+    }
+
+    function updateScoreUI() {
+        scoreVal.innerText = safetyScore;
+        let grade = "A+";
+        let gradeClass = "grade-a";
+
+        if (safetyScore >= 95) { grade = "(A+)"; gradeClass = "grade-a"; }
+        else if (safetyScore >= 90) { grade = "(A)"; gradeClass = "grade-a"; }
+        else if (safetyScore >= 80) { grade = "(B)"; gradeClass = "grade-b"; }
+        else if (safetyScore >= 70) { grade = "(C)"; gradeClass = "grade-c"; }
+        else { grade = "(D)"; gradeClass = "grade-d"; }
+
+        scoreGrade.innerText = grade;
+        scorePill.className = `score-pill ${gradeClass}`;
+    }
+
+    // --- COACHING NUDGE BANNER ---
+    function showCoachingBanner(icon, text, isDanger = false) {
+        if (isCoachingDismissed && currentCoachingReason === text) return;
+        currentCoachingReason = text;
+        coachingIcon.innerText = icon;
+        coachingText.innerText = text;
+        coachingBar.className = isDanger ? "coaching-bar danger" : "coaching-bar";
+        coachingBar.style.display = "flex";
+    }
+
+    function hideCoachingBanner() {
+        coachingBar.style.display = "none";
+    }
+
+    coachingDismiss.onclick = () => {
+        isCoachingDismissed = true;
+        hideCoachingBanner();
+    };
+
+    // --- MAIN COMPUTER VISION INFERENCE CALLBACK ---
+    function onResults(results) {
+        const now = performance.now();
+        if (loader.style.display !== "none") loader.style.display = "none";
+
+        // Update Session & Continuous Drive Timers
+        if (sessionStartTime > 0) {
+            const totalElapsed = now - sessionStartTime;
+            const driveElapsed = now - continuousDriveStartTime;
+            driveVal.innerText = `${formatTime(totalElapsed)} / ${formatTime(driveElapsed)}`;
+
+            // Check continuous drive limit
+            if (driveElapsed > CONTINUOUS_DRIVE_LIMIT_MS && !isBreakNudgeActive) {
+                isBreakNudgeActive = true;
+                driveBadge.innerText = "BREAK DUE";
+                driveBadge.className = "badge warn";
+                showCoachingBanner("☕", "Break Recommended: Continuous drive > 60m. A 15-minute rest restores alertness.", false);
+            }
+        }
+
+        // Handle Quick Pause / Suppression
+        if (now < suppressUntil) {
+            handleSuspensionUI(now);
+            return;
+        } else {
+            resetSuspensionUI();
+        }
+
+        // --- WATCHDOG: FACE LOST FAILSAFE ---
+        if (!results.multiFaceLandmarks || !results.multiFaceLandmarks[0]) {
+            if (isCalibrated) {
+                if (!faceLostTimer) faceLostTimer = now;
+                if (now - faceLostTimer > 1500) {
+                    alarmOverlay.style.display = "flex";
+                    alertReason.innerText = "FACE LOST - CHECK POSITION";
+                    handleAudio(true, 'pulse', now);
+
+                    if (!activeFaceLostEventLogged) {
+                        logEvent("FACE_LOST", "CRITICAL", "Driver face departed frame / camera obscured");
+                        activeFaceLostEventLogged = true;
+                    }
+                    return;
+                }
+            }
+            return;
+        } else {
+            faceLostTimer = null;
+            activeFaceLostEventLogged = false;
+            if (alertReason.innerText === "FACE LOST - CHECK POSITION") {
+                alarmOverlay.style.display = "none";
+                setAlarm(false);
+            }
+        }
+
+        const lm = results.multiFaceLandmarks[0];
+
+        // 1. CALCULATE RAW 3D PHYSICS
+        // Pitch: Nose tip (1) vs Chin (152) in Y-Z plane
+        const rawPitch = Math.atan2(lm[1].y - lm[152].y, lm[1].z - lm[152].z) * RAD_TO_DEG;
+        // Roll: Right inner eye (362) vs Left inner eye (133) in Y-X plane
+        const rawRoll = Math.atan2(lm[362].y - lm[133].y, lm[362].x - lm[133].x) * RAD_TO_DEG;
+        // Yaw: Left outer edge (234) vs Right outer edge (454) in Z-X plane
+        const rawYaw = Math.atan2(lm[454].z - lm[234].z, lm[454].x - lm[234].x) * RAD_TO_DEG;
+
+        // Eye Aspect Ratio (EAR)
+        const leftE = dist3D(lm[159], lm[145]) / dist3D(lm[33], lm[133]);
+        const rightE = dist3D(lm[386], lm[374]) / dist3D(lm[362], lm[263]);
+        const rawEAR = (leftE + rightE) / 2;
+
+        // Mouth Aspect Ratio (MAR)
+        const rawMAR = dist3D(lm[13], lm[14]) / dist3D(lm[1], lm[152]);
+
+        // 2. SIGNAL PROCESSING (EMA SMOOTHING)
+        sPitch = (ALPHA * rawPitch) + (1 - ALPHA) * sPitch;
+        sRoll  = (ALPHA * rawRoll)  + (1 - ALPHA) * sRoll;
+        sYaw   = (ALPHA * rawYaw)   + (1 - ALPHA) * sYaw;
+        sEAR   = (ALPHA * rawEAR)   + (1 - ALPHA) * sEAR;
+        sMAR   = (ALPHA * rawMAR)   + (1 - ALPHA) * sMAR;
+
+        // Live Telemetry Displays
+        headVal.innerText = `${sPitch.toFixed(1)}° / ${sRoll.toFixed(1)}°`;
+        gazeVal.innerText = `${sYaw.toFixed(1)}°`;
+        earVal.innerText = sEAR.toFixed(2);
+        marVal.innerText = sMAR.toFixed(2);
+
+        // 3. CALIBRATION WINDOW
+        if (!isCalibrated) {
+            handleCalibration(now);
+            return;
+        }
+
+        // 4. V11 FULL ENGINE EVALUATION
+        processLogicV11(now, lm);
+    }
+
+    // --- CALIBRATION HANDLER ---
+    function handleCalibration(now) {
+        if (calibrationStartTime === 0) calibrationStartTime = now;
+        const elapsed = now - calibrationStartTime;
+        statusText.innerText = `CALIBRATING (${Math.ceil((CALIBRATION_DURATION_MS - elapsed) / 1000)}s)`;
+        statusDot.className = "dot warn";
+        msgBox.innerText = "LOOK STRAIGHT AT ROAD...";
+
+        basePitch = (basePitch * 0.9) + (sPitch * 0.1);
+        baseRoll  = (baseRoll * 0.9)  + (sRoll * 0.1);
+        baseYaw   = (baseYaw * 0.9)   + (sYaw * 0.1);
+        baseEAR   = (baseEAR * 0.9)   + (sEAR * 0.1);
+        baseMAR   = (baseMAR * 0.9)   + (sMAR * 0.1);
+
+        if (elapsed > CALIBRATION_DURATION_MS) {
+            isCalibrated = true;
+            statusText.innerText = "ACTIVE";
+            statusDot.className = "dot active";
+            document.getElementById('scan-line').style.display = "block";
+            logEvent("SYSTEM", "INFO", "Session calibrated — baseline established", 0);
+        }
+    }
+
+    // --- REFINED V11 LOGIC ENGINE ---
+    function processLogicV11(now, lm) {
+        let activeAlarm = null;
+        let activeVisualMessage = "";
+
+        // --- DEFINITIONS & ZONES ---
+        const isNodding = sPitch < (basePitch - 28);
+        const isDeepDrop = sPitch < (basePitch - 43);
+        const isSlumping = Math.abs(sRoll - baseRoll) > 15;
+        const isLookingAway = Math.abs(sYaw - baseYaw) > YAW_THRESHOLD_DEG;
+
+        // 1. SMART SUNGLASSES DETECTOR & LOGIC
+        if (manualSunglassesMode) {
+            persistentSunglasses = true;
+        } else {
+            if (sEAR < 0.05) {
+                if (!sunglassTimer) sunglassTimer = now;
+                if (now - sunglassTimer > 2000) persistentSunglasses = true;
+            } else if (sEAR > 0.08) {
+                sunglassTimer = null;
+                persistentSunglasses = false;
+            }
+        }
+
+        const isSunglasses = persistentSunglasses;
+        const isEyesClosed = isSunglasses ? false : (sEAR < (baseEAR * 0.60));
+
+        // 2. PERCLOS ROLLING BUFFER UPDATE & TIERED RATING
+        let currentPerclos = 0;
+        if (!isSunglasses) {
+            const isEyePartiallyClosed = sEAR < (baseEAR * 0.70);
+            perclosSamples.push({ time: now, closed: isEyePartiallyClosed });
+
+            // Prune samples older than 60 seconds
+            const cutoff = now - PERCLOS_WINDOW_MS;
+            while (perclosSamples.length > 0 && perclosSamples[0].time < cutoff) {
+                perclosSamples.shift();
+            }
+
+            if (perclosSamples.length > 10) {
+                const closedCount = perclosSamples.filter(s => s.closed).length;
+                currentPerclos = (closedCount / perclosSamples.length) * 100;
+                peakPERCLOS = Math.max(peakPERCLOS, currentPerclos);
+                perclosVal.innerText = `${currentPerclos.toFixed(1)}%`;
+
+                if (currentPerclos >= PERCLOS_CRITICAL_THRESHOLD) {
+                    cardPerclos.classList.remove("warning-state");
+                    cardPerclos.classList.add("bad");
+                    perclosBadge.innerText = "CRITICAL (>25%)";
+                    perclosBadge.className = "badge alert";
+                } else if (currentPerclos >= PERCLOS_ALERT_THRESHOLD) {
+                    cardPerclos.classList.remove("bad");
+                    cardPerclos.classList.add("warning-state");
+                    perclosBadge.innerText = "ELEVATED";
+                    perclosBadge.className = "badge warn";
+                } else if (currentPerclos >= PERCLOS_MILD_THRESHOLD) {
+                    cardPerclos.classList.remove("bad");
+                    cardPerclos.classList.add("warning-state");
+                    perclosBadge.innerText = "RISING";
+                    perclosBadge.className = "badge warn";
+                } else {
+                    cardPerclos.classList.remove("warning-state", "bad");
+                    perclosBadge.innerText = "OPTIMAL";
+                    perclosBadge.className = "badge good";
+                }
+            } else {
+                perclosVal.innerText = "CALC...";
+                perclosBadge.innerText = "BUFFERING";
+                perclosBadge.className = "badge";
+            }
+        } else {
+            perclosVal.innerText = "N/A (GLASSES)";
+            perclosBadge.innerText = "BYPASS";
+            perclosBadge.className = "badge active";
+        }
+
+        // 3. DISCRETE YAWN STATE MACHINE & 10-MIN WINDOW
+        // Baseline closed mouth MAR is ~0.03-0.08. Conversational speech MAR is ~0.08-0.15 (syllables open <300ms).
+        // Physiological yawns reach MAR >= 0.18 and stay open continuously >= 800ms.
+        const yawnThresh = Math.max(baseMAR > 0 ? (baseMAR * 2.2) : YAWN_MIN_MAR, YAWN_MIN_MAR);
+        if (sMAR > yawnThresh) {
+            if (!timers.yawnStart) {
+                timers.yawnStart = now;
+                yawnCountedThisCycle = false;
+            }
+            const openDuration = now - timers.yawnStart;
+
+            // Progressive real-time visual indicator as mouth stays open
+            if (openDuration > 250) {
+                cardMouth.classList.add("bad");
+                if (!yawnCountedThisCycle) {
+                    mouthBadge.innerText = `OPEN (${(openDuration/1000).toFixed(1)}s)...`;
+                    mouthBadge.className = "badge warn";
+                }
+            }
+
+            // Immediately register yawn upon crossing the continuous hold threshold (800ms)
+            if (openDuration >= YAWN_MIN_DURATION_MS && !yawnCountedThisCycle) {
+                totalYawnsCount++;
+                yawnTimestamps.push(now);
+                logEvent("YAWN", "WARNING", `Sustained yawn detected (${(openDuration/1000).toFixed(1)}s hold)`);
+                yawnCountedThisCycle = true;
+                mouthBadge.innerText = "YAWN DETECTED!";
+                mouthBadge.className = "badge alert";
+            }
+        } else {
+            timers.yawnStart = null;
+            yawnCountedThisCycle = false;
+            cardMouth.classList.remove("bad");
+        }
+
+        // Prune yawns older than 10 minutes
+        const yawnCutoff = now - YAWN_WINDOW_MS;
+        while (yawnTimestamps.length > 0 && yawnTimestamps[0] < yawnCutoff) {
+            yawnTimestamps.shift();
+        }
+        const recentYawnsCount = yawnTimestamps.length;
+        if (sMAR <= yawnThresh) {
+            mouthBadge.innerText = `YAWNS: ${totalYawnsCount} (${recentYawnsCount}/10m)`;
+            mouthBadge.className = recentYawnsCount >= YAWN_ALERT_THRESHOLD ? "badge alert" : "badge";
+        }
+
+        // 4. MULTI-TIER FATIGUE TREND & CRITICAL PERCLOS WARNING
+        const isCriticalPerclos = !isSunglasses && currentPerclos >= PERCLOS_CRITICAL_THRESHOLD;
+        const isHighPerclos = !isSunglasses && currentPerclos >= PERCLOS_ALERT_THRESHOLD;
+        const isMildPerclos = !isSunglasses && currentPerclos >= PERCLOS_MILD_THRESHOLD;
+        const isFrequentYawning = recentYawnsCount >= YAWN_ALERT_THRESHOLD;
+        const isCompoundFatigue = (!isSunglasses && currentPerclos >= 10.0 && recentYawnsCount >= 2);
+
+        if (isCriticalPerclos) {
+            // Tier 3: Critical Severe Drowsiness
+            showCoachingBanner("🛑", `CRITICAL DROWSINESS: Extreme PERCLOS (${currentPerclos.toFixed(1)}%). Severe microsleep risk! Pull over immediately.`, true);
+            if (!activeVisualMessage) activeVisualMessage = "CRITICAL FATIGUE (HIGH PERCLOS)";
+            if (!criticalPerclosLogged) {
+                logEvent("CRITICAL_PERCLOS", "CRITICAL", `Severe PERCLOS elevation (${currentPerclos.toFixed(1)}% > 25%) - Acute microsleep danger`);
+                criticalPerclosLogged = true;
+            }
+        } else if (isHighPerclos || isFrequentYawning || isCompoundFatigue) {
+            // Tier 2: Elevated Fatigue Trend
+            criticalPerclosLogged = false;
+            const reasons = [];
+            if (isHighPerclos) reasons.push(`PERCLOS ${currentPerclos.toFixed(1)}%`);
+            if (isFrequentYawning) reasons.push(`${recentYawnsCount} yawns in 10m`);
+            if (isCompoundFatigue && !isHighPerclos && !isFrequentYawning) reasons.push(`PERCLOS ${currentPerclos.toFixed(1)}% + ${recentYawnsCount} yawns`);
+
+            showCoachingBanner("⚠️", `Fatigue Trend Rising: ${reasons.join(' & ')}. Plan a rest stop soon.`, false);
+
+            if (!fatigueTrendLogged) {
+                logEvent("FATIGUE_TREND", "COACHING", `Fatigue trend elevation: ${reasons.join(' & ')}`);
+                fatigueTrendLogged = true;
+            }
+        } else if (isMildPerclos || recentYawnsCount >= 1) {
+            // Tier 1: Mild Fatigue Advisory
+            criticalPerclosLogged = false;
+            fatigueTrendLogged = false;
+            if (!isBreakNudgeActive && !manualSunglassesMode && !isLookingAway) {
+                hideCoachingBanner();
+            }
+        } else if (!isBreakNudgeActive && !manualSunglassesMode) {
+            criticalPerclosLogged = false;
+            fatigueTrendLogged = false;
+            if (!isLookingAway) hideCoachingBanner();
+        }
+
+        // --- WATCHDOG 1: DEEP DROP (Critical Failsafe) ---
+        if (isDeepDrop) {
+            if (!timers.deepDrop) timers.deepDrop = now;
+            if (now - timers.deepDrop > 800) {
+                activeAlarm = "CRITICAL: HEAD DROP";
+                if (!activeHeadDropEventLogged) {
+                    logEvent("HEAD_DROP", "CRITICAL", "Severe head collapse detected (>43° pitch drop)");
+                    activeHeadDropEventLogged = true;
+                }
+            }
+            cardHead.classList.add("bad");
+            slumpBadge.innerText = "HEAD DROP"; slumpBadge.className = "badge alert";
+        } else {
+            timers.deepDrop = null;
+            activeHeadDropEventLogged = false;
+        }
+
+        // --- WATCHDOG 2: NODDING & SIDE SLUMP ---
+        if ((isNodding && !isDeepDrop) || isSlumping) {
+            cardHead.classList.add("bad");
+            slumpBadge.innerText = isSlumping ? "SIDE SLUMP" : "NODDING";
+            slumpBadge.className = "badge alert";
+
+            let shouldTriggerAudio = false;
+            if (manualSunglassesMode || persistentSunglasses) {
+                shouldTriggerAudio = true;
+            } else if (isEyesClosed) {
+                shouldTriggerAudio = true;
+            }
+
+            if (shouldTriggerAudio) {
+                if (!timers.sideSlump) timers.sideSlump = now;
+                const threshold = (manualSunglassesMode || persistentSunglasses || !isSlumping) ? 1200 : 1500;
+
+                if (now - timers.sideSlump > threshold) {
+                    activeAlarm = isSlumping ? "CRITICAL: SIDE SLUMP" : "DROWSINESS DETECTED";
+                    if (!activeSideSlumpEventLogged) {
+                        logEvent(isSlumping ? "SIDE_SLUMP" : "HEAD_NOD", "CRITICAL", isSlumping ? "Lateral body slump (>15° roll)" : "Head nodding (>28° pitch)");
+                        activeSideSlumpEventLogged = true;
+                    }
+                }
+                activeVisualMessage = manualSunglassesMode ? "POSTURE ALARM (MANUAL MODE)" : "FATIGUE (POSTURE + EYES)";
+            } else {
+                timers.sideSlump = null;
+                activeSideSlumpEventLogged = false;
+                activeVisualMessage = "POSTURE WARNING (VISUAL)";
+            }
+        } else if (!isDeepDrop) {
+            timers.sideSlump = null;
+            activeSideSlumpEventLogged = false;
+            cardHead.classList.remove("bad");
+            slumpBadge.innerText = "STABLE"; slumpBadge.className = "badge good";
+        }
+
+        // --- WATCHDOG 3: STIFF NECK / EYE GUARD ---
+        if (!isDeepDrop && !isSlumping && !isNodding) {
+            if (isSunglasses) {
+                sunglassBadge.innerText = manualSunglassesMode ? "MANUAL GLASSES" : "SUNGLASSES";
+                sunglassBadge.className = "badge active";
+                cardEye.classList.remove("bad");
+            } else {
+                sunglassBadge.innerText = "VISION CLEAR";
+                sunglassBadge.className = "badge good";
+
+                if (isEyesClosed) {
+                    if (!timers.stiffEye) timers.stiffEye = now;
+                    if (now - timers.stiffEye > 1500) {
+                        activeAlarm = "DROWSINESS (EYES)";
+                        if (!activeDrowsyEventLogged) {
+                            logEvent("EYES_CLOSED", "CRITICAL", "Prolonged eyelid closure (>1.5s)");
+                            activeDrowsyEventLogged = true;
+                        }
+                    }
+                    cardEye.classList.add("bad");
+                    activeVisualMessage = "WAKE UP!";
+                } else {
+                    timers.stiffEye = null;
+                    activeDrowsyEventLogged = false;
+                    cardEye.classList.remove("bad");
+                }
+            }
+        }
+
+        // --- WATCHDOG 4: GAZE / DISTRACTION GUARD (Yaw) ---
+        if (isLookingAway) {
+            if (!timers.distraction) timers.distraction = now;
+            const distractionDuration = now - timers.distraction;
+
+            if (distractionDuration > DISTRACTION_ALARM_MS) {
+                // Escalate to Audio Alarm if sustained > 3.5s
+                activeAlarm = activeAlarm || "DISTRACTION: LOOKING AWAY";
+                cardGaze.classList.add("bad");
+                cardGaze.classList.remove("warning-state");
+                gazeBadge.innerText = "DISTRACTED";
+                gazeBadge.className = "badge alert";
+                activeVisualMessage = "EYES ON ROAD!";
+
+                if (!activeDistractionEventLogged) {
+                    logEvent("DISTRACTION", "WARNING", `Sustained gaze distraction (>25° yaw for ${(distractionDuration/1000).toFixed(1)}s)`);
+                    activeDistractionEventLogged = true;
+                }
+            } else if (distractionDuration > DISTRACTION_WARN_MS) {
+                // Non-alarm visual coaching warning (1.8s - 3.5s)
+                cardGaze.classList.add("warning-state");
+                gazeBadge.innerText = "LOOKING AWAY";
+                gazeBadge.className = "badge warn";
+                showCoachingBanner("👀", "Distraction Warning: Eyes off road. Return focus forward.", false);
+                if (!activeVisualMessage) activeVisualMessage = "DISTRACTION (VISUAL)";
+            }
+        } else {
+            timers.distraction = null;
+            activeDistractionEventLogged = false;
+            cardGaze.classList.remove("bad");
+            cardGaze.classList.remove("warning-state");
+            gazeBadge.innerText = "ON ROAD";
+            gazeBadge.className = "badge good";
+        }
+
+        // --- UI MESSAGE BOX PRIORITY ---
+        if (activeAlarm) {
+            msgBox.innerText = activeAlarm;
+            msgBox.style.color = "var(--neon-red)";
+        } else if (activeVisualMessage) {
+            msgBox.innerText = activeVisualMessage;
+            msgBox.style.color = activeVisualMessage.includes("WARNING") ? "var(--neon-amber)" : "var(--neon-red)";
+        } else if (sMAR > yawnThresh && timers.yawnStart && (now - timers.yawnStart > 250)) {
+            msgBox.innerText = "MOUTH WIDE OPEN";
+            msgBox.style.color = "var(--neon-amber)";
+        } else {
+            msgBox.innerText = "SYSTEM ACTIVE";
+            msgBox.style.color = "#666";
+        }
+
+        // --- OUTPUT AUDIO & DANGER ALARM OVERLAY ---
+        if (activeAlarm && now > muteUntil) {
+            alarmOverlay.style.display = "flex";
+            alertReason.innerText = activeAlarm;
+            handleAudio(true, 'standard', now);
+        } else {
+            if (alertReason.innerText !== "FACE LOST - CHECK POSITION") {
+                alarmOverlay.style.display = "none";
+                handleAudio(false, 'standard', now);
+            }
+        }
+    }
+
+    // --- SUSPENSION & UI HELPERS ---
+    function handleSuspensionUI(now) {
+        const left = Math.ceil((suppressUntil - now) / 1000);
+        pauseBtn.innerText = `RESUME IN: ${left}s`;
+        pauseBtn.classList.add("suppressed");
+        statusText.innerText = "SUSPENDED";
+        statusDot.className = "dot paused";
+        setAlarm(false);
+    }
+
+    function resetSuspensionUI() {
+        if (pauseBtn.classList.contains("suppressed")) {
+            pauseBtn.classList.remove("suppressed");
+            pauseBtn.innerText = "Pause (20s)";
+            statusText.innerText = "ACTIVE";
+            statusDot.className = "dot active";
+        }
+    }
+
+    // --- BUTTON CONTROLS & ACTIONS ---
+    modeToggle.onclick = () => {
+        manualSunglassesMode = !manualSunglassesMode;
+        if (manualSunglassesMode) {
+            modeToggle.classList.add("active");
+            modeToggle.innerText = "Mode: Sunglasses";
+            sunglassBadge.innerText = "MANUAL MODE";
+            sunglassBadge.className = "badge active";
+            showCoachingBanner("🕶️", "Manual Sunglasses Mode enabled: Head posture prioritized as primary guard.", false);
+        } else {
+            modeToggle.classList.remove("active");
+            modeToggle.innerText = "Mode: Standard";
+            persistentSunglasses = false;
+            hideCoachingBanner();
+        }
+    };
+
+    breakBtn.onclick = () => {
+        continuousDriveStartTime = performance.now();
+        breaksTakenCount++;
+        isBreakNudgeActive = false;
+        driveBadge.innerText = "RESTED";
+        driveBadge.className = "badge good";
+        hideCoachingBanner();
+        logEvent("BREAK_TAKEN", "INFO", `Driver break taken (#${breaksTakenCount}) — drive timer reset`);
+        msgBox.innerText = "BREAK LOGGED — DRIVE TIMER RESET";
+        msgBox.style.color = "var(--neon-green)";
+    };
+
+    pauseBtn.onclick = () => {
+        suppressUntil = performance.now() + 20000;
+    };
+
+    ackBtn.onclick = () => {
+        muteUntil = performance.now() + 5000;
+        alarmOverlay.style.display = "none";
+        setAlarm(false);
+    };
+
+    // --- SESSION REPORT MODAL & JSON EXPORT ---
+    reportBtn.onclick = () => {
+        renderSessionReport();
+        reportModal.style.display = "flex";
+    };
+
+    modalCloseBtn.onclick = () => { reportModal.style.display = "none"; };
+    modalCloseFooter.onclick = () => { reportModal.style.display = "none"; };
+    reportModal.onclick = (e) => { if (e.target === reportModal) reportModal.style.display = "none"; };
+
+    function renderSessionReport() {
+        const now = performance.now();
+        const durationStr = sessionStartTime > 0 ? formatTime(now - sessionStartTime) : "00:00";
+
+        reportScore.innerText = `${safetyScore} ${scoreGrade.innerText}`;
+        reportScore.style.color = safetyScore >= 80 ? "var(--neon-green)" : (safetyScore >= 70 ? "var(--neon-amber)" : "var(--neon-red)");
+        reportDuration.innerText = durationStr;
+        reportEventsCount.innerText = events.length;
+
+        const avgPerclos = perclosSamples.length > 0
+            ? (perclosSamples.filter(s => s.closed).length / perclosSamples.length * 100).toFixed(1)
+            : "0.0";
+        reportPerclos.innerText = `${avgPerclos}% / ${peakPERCLOS.toFixed(1)}%`;
+        reportYawns.innerText = `${totalYawnsCount}`;
+        reportBreaks.innerText = `${breaksTakenCount}`;
+
+        // Dynamic Automated Coaching Insight Generator
+        const counts = {
+            distraction: events.filter(e => e.type === "DISTRACTION").length,
+            posture: events.filter(e => e.type === "HEAD_DROP" || e.type === "SIDE_SLUMP" || e.type === "HEAD_NOD").length,
+            eyes: events.filter(e => e.type === "EYES_CLOSED").length,
+            yawns: events.filter(e => e.type === "YAWN").length,
+            faceLost: events.filter(e => e.type === "FACE_LOST").length
+        };
+
+        let takeaway = "Exemplary driving performance! High alertness and steady road focus maintained.";
+        if (counts.posture > 0 && counts.posture >= counts.distraction && counts.posture >= counts.eyes) {
+            takeaway = "Posture-related fatigue was your primary risk factor. Consider adjusting seat height and ensuring the headrest supports an upright posture.";
+        } else if (counts.distraction > 0 && counts.distraction >= counts.posture) {
+            takeaway = "Frequent off-road gaze events detected. Minimize secondary cabin tasks, mirror staring, and dashboard glances while driving.";
+        } else if (counts.eyes > 0 || peakPERCLOS > 25) {
+            takeaway = "Severe fatigue & microsleep risks detected. Your eye closure rates (PERCLOS > 25%) indicate hazardous drowsiness — pull over and rest immediately.";
+        } else if (counts.yawns >= 3 || peakPERCLOS > 15) {
+            takeaway = "Subtle fatigue trends were detected via elevated PERCLOS and yawning frequency. Schedule regular 15-minute breaks every 2 hours.";
+        } else if (events.length === 0 && sessionStartTime > 0) {
+            takeaway = "Flawless focus score! Zero fatigue or distraction anomalies detected during this session.";
+        }
+
+        reportTakeaway.innerText = takeaway;
+
+        // Render Event Timeline
+        if (events.length === 0) {
+            timelineList.innerHTML = `<div style="color:#666; text-align:center; padding:15px 0;">No safety incidents logged in this session yet.</div>`;
+        } else {
+            timelineList.innerHTML = events.slice().reverse().map(e => {
+                let rowClass = "info";
+                if (e.severity === "CRITICAL") rowClass = "critical";
+                else if (e.severity === "WARNING") rowClass = "warning";
+                else if (e.severity === "COACHING") rowClass = "coaching";
+
+                const penaltyStr = e.penalty !== 0 ? `(${e.penalty > 0 ? '+' : ''}${e.penalty} pts)` : '';
+                return `
+                    <div class="timeline-row ${rowClass}">
+                        <span>[${e.time}] <strong>${e.type}</strong>: ${e.description}</span>
+                        <span style="font-weight:700;">${penaltyStr}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    // Export Report to JSON Blob
+    exportBtn.onclick = () => {
+        const now = performance.now();
+        const durationStr = sessionStartTime > 0 ? formatTime(now - sessionStartTime) : "00:00";
+
+        const avgPerclos = perclosSamples.length > 0
+            ? (perclosSamples.filter(s => s.closed).length / perclosSamples.length * 100).toFixed(1)
+            : "0.0";
+
+        const reportData = {
+            system: "Neuro-Nod Elite V11 Focus Shield",
+            generatedAt: new Date().toISOString(),
+            sessionSummary: {
+                totalDuration: durationStr,
+                safetyScore: safetyScore,
+                scoreGrade: scoreGrade.innerText.replace(/[()]/g, ''),
+                breaksTaken: breaksTakenCount,
+                totalYawns: totalYawnsCount,
+                averagePerclos: `${avgPerclos}%`,
+                peakPerclos: `${peakPERCLOS.toFixed(1)}%`,
+                coachingTakeaway: reportTakeaway.innerText
+            },
+            eventLog: events
+        };
+
+        const jsonStr = JSON.stringify(reportData, null, 2);
+        const blob = new Blob([jsonStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Neuro-Nod-Session-Report-${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    // --- MEDIAPIPE FACE MESH INITIALIZATION ---
+    const faceMesh = new FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+
+    faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+    });
+
+    faceMesh.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await faceMesh.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480
+    });
+
+    startBtn.onclick = () => {
+        initAudio();
+        startBtn.style.display = "none";
+        sessionStartTime = performance.now();
+        continuousDriveStartTime = performance.now();
+        camera.start();
+    };
+
+    // Optional Mobile DeviceMotion Harsh-Maneuver Detection
+    if (window.DeviceMotionEvent && typeof window.DeviceMotionEvent.requestPermission !== 'function') {
+        let lastMotionSpike = 0;
+        window.addEventListener('devicemotion', (e) => {
+            if (!isCalibrated) return;
+            const acc = e.accelerationIncludingGravity;
+            if (!acc) return;
+            const magnitude = Math.sqrt((acc.x || 0)**2 + (acc.y || 0)**2 + (acc.z || 0)**2);
+            const now = performance.now();
+            if (magnitude > 19.5 && (now - lastMotionSpike > 4000)) { // ~2G acceleration spike
+                lastMotionSpike = now;
+                logEvent("HARSH_MOTION", "WARNING", `Sudden inertial spike detected (${magnitude.toFixed(1)} m/s²)`);
+                showCoachingBanner("🚗", "Harsh Vehicle Maneuver detected. Drive smoothly.", false);
+            }
+        });
+    }
+</script>
+</body>
+</html>
